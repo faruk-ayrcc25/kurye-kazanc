@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="tr" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <!-- viewport-fit=cover: iPhone çentiği/alt çubuğu için güvenli alanları kullanabilmek için -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Kurye Kazanç</title>
+  <meta name="description" content="Kurye paket kazançlarını ve giderlerini takip etme uygulaması">
+  <meta name="theme-color" content="#111418">
+
+  <!-- PWA bildirimi (manifest) ve ikonlar — tüm yollar göreli (GitHub Pages için) -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+
+  <!-- iPhone (Safari) için tam ekran uygulama ayarları -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Kurye Kazanç">
+
+  <!-- Tema, sayfa çizilmeden önce uygulansın ki açılışta beyaz/koyu yanıp sönme olmasın -->
+  <script>
+    try {
+      var t = localStorage.getItem('kk-theme');
+      if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+    } catch (e) {}
+  </script>
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ===================== BUGÜN EKRANI ===================== -->
+  <main id="screen-today" class="screen">
+    <!-- Gün seçici: oklar + ortadaki tarihe dokununca takvim açılır -->
+    <header class="day-nav">
+      <button class="icon-btn" id="prevDay" aria-label="Önceki gün">‹</button>
+      <button class="day-title" id="dayTitle" aria-label="Takvimden gün seç">
+        <span id="dayLabel" class="day-label">Bugün</span>
+        <span id="dayDate" class="day-date"></span>
+      </button>
+      <button class="icon-btn" id="nextDay" aria-label="Sonraki gün">›</button>
+      <!-- Görünmez tarih seçici (takvim) -->
+      <input type="date" id="datePicker" class="visually-hidden" tabindex="-1" aria-hidden="true">
+    </header>
+    <button id="backToToday" class="link-btn" hidden>Bugüne dön</button>
+
+    <!-- Özet kartları: NET en büyük ve en belirgin -->
+    <section class="card net-card">
+      <div class="card-label">NET KAZANÇ</div>
+      <div class="net-value" id="tNet">0 ₺</div>
+    </section>
+    <section class="stat-grid">
+      <div class="card stat">
+        <div class="card-label">Paket</div>
+        <div class="stat-value" id="tCount">0</div>
+      </div>
+      <div class="card stat">
+        <div class="card-label">Kazanç</div>
+        <div class="stat-value good" id="tIncome">0 ₺</div>
+      </div>
+      <div class="card stat">
+        <div class="card-label">Gider</div>
+        <div class="stat-value bad" id="tExpense">0 ₺</div>
+      </div>
+    </section>
+
+    <!-- Bu haftanın kısa özeti (dokununca haftalık özet açılır) -->
+    <button class="card week-strip" id="weekStrip"></button>
+
+    <!-- Günün paket listesi -->
+    <section class="list-section">
+      <h2 class="section-title">Paketler</h2>
+      <ul class="rec-list" id="pkList"></ul>
+    </section>
+
+    <!-- Günün gider listesi -->
+    <section class="list-section">
+      <h2 class="section-title">Giderler</h2>
+      <ul class="rec-list" id="exList"></ul>
+    </section>
+
+    <!-- Alt kısımda sabit hızlı ekleme çubuğu (tek elle başparmakla erişilebilir) -->
+    <div class="action-bar">
+      <div class="quick-row" id="quickRow" aria-label="Hızlı paket ekle"></div>
+      <div class="action-buttons">
+        <button class="btn btn-primary btn-big" id="addPackageBtn">
+          + Paket <small id="nextPkNo"></small>
+        </button>
+        <button class="btn btn-secondary btn-big" id="addExpenseBtn">+ Gider</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- ===================== ÖZET (AYLIK / HAFTALIK / YILLIK) EKRANI ===================== -->
+  <main id="screen-summary" class="screen" hidden>
+    <div class="segmented" role="tablist" id="summaryMode">
+      <button data-mode="week">Hafta</button>
+      <button data-mode="month" class="active">Ay</button>
+      <button data-mode="year">Yıl</button>
+    </div>
+    <header class="day-nav">
+      <button class="icon-btn" id="prevPeriod" aria-label="Önceki">‹</button>
+      <div class="day-title static"><span id="periodLabel" class="day-date big"></span></div>
+      <button class="icon-btn" id="nextPeriod" aria-label="Sonraki">›</button>
+    </header>
+    <!-- İçerik app.js tarafından doldurulur -->
+    <div id="summaryBody"></div>
+  </main>
+
+  <!-- ===================== AYARLAR EKRANI ===================== -->
+  <main id="screen-settings" class="screen" hidden>
+    <h1 class="page-title">Ayarlar</h1>
+
+    <section class="card settings-block">
+      <h2 class="section-title">Görünüm</h2>
+      <div class="segmented" id="themeSeg">
+        <button data-theme="dark">🌙 Koyu</button>
+        <button data-theme="light">☀️ Açık</button>
+      </div>
+    </section>
+
+    <section class="card settings-block">
+      <h2 class="section-title">Gün başlangıç saati</h2>
+      <p class="hint">Bu saatten önce eklenen kayıtlar bir önceki iş gününe sayılır.
+        Örn. 05:00 ise gece 02:30'da attığın paket dünün hesabına yazılır.</p>
+      <input type="time" id="dayStartInput" class="input" value="05:00">
+    </section>
+
+    <section class="card settings-block">
+      <h2 class="section-title">Gider kategorilerim</h2>
+      <p class="hint">Hazır kategoriler: Yakıt, Sigara, Yemek, Motor bakım/tamir, Telefon/İnternet, Diğer.</p>
+      <ul class="cat-list" id="customCatList"></ul>
+      <form class="inline-form" id="addCatForm">
+        <input type="text" id="newCatInput" class="input" placeholder="Yeni kategori adı" maxlength="30">
+        <button class="btn btn-secondary" type="submit">Ekle</button>
+      </form>
+    </section>
+
+    <section class="card settings-block">
+      <h2 class="section-title">Yedekleme</h2>
+      <p class="hint">Veriler yalnızca bu telefonda saklanır. Ara sıra yedek alıp
+        dosyayı Drive/WhatsApp gibi bir yere kaydetmen önerilir.</p>
+      <button class="btn btn-secondary btn-block" id="exportBtn">⬇️ Yedeği dışa aktar (JSON)</button>
+      <button class="btn btn-secondary btn-block" id="importBtn">⬆️ Yedeği içe aktar</button>
+      <input type="file" id="importFile" accept=".json,application/json" hidden>
+      <div class="inline-form">
+        <input type="month" id="csvMonth" class="input">
+        <button class="btn btn-secondary" id="csvBtn">CSV indir</button>
+      </div>
+      <p class="hint" id="dbInfo"></p>
+    </section>
+
+    <section class="card settings-block danger">
+      <h2 class="section-title">Tehlikeli bölge</h2>
+      <button class="btn btn-danger btn-block" id="wipeBtn">🗑️ Tüm verileri sil</button>
+    </section>
+
+    <p class="hint center">Kurye Kazanç Takip · v1.0 · Çevrimdışı çalışır</p>
+  </main>
+
+  <!-- ===================== ALT SEKME MENÜSÜ ===================== -->
+  <nav class="tabbar">
+    <button data-tab="today" class="active"><span class="tab-ico">📦</span>Bugün</button>
+    <button data-tab="summary"><span class="tab-ico">📊</span>Aylık</button>
+    <button data-tab="settings"><span class="tab-ico">⚙️</span>Ayarlar</button>
+  </nav>
+
+  <!-- ===================== ALT PENCERE (PAKET FORMU) ===================== -->
+  <div class="overlay" id="pkSheet" hidden>
+    <form class="sheet" id="pkForm" autocomplete="off">
+      <div class="sheet-head">
+        <h2 id="pkTitle">Paket ekle</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Kapat">✕</button>
+      </div>
+      <label class="field-label" for="pkAmount">Tutar (₺)</label>
+      <!-- inputmode=decimal: telefonda sayısal klavye açar -->
+      <input type="text" inputmode="decimal" id="pkAmount" class="input input-amount" placeholder="0" enterkeyhint="done">
+      <div class="chips" id="pkChips"></div>
+      <div class="row-2">
+        <div>
+          <label class="field-label" for="pkTime">Saat</label>
+          <input type="time" id="pkTime" class="input">
+        </div>
+        <div class="grow">
+          <label class="field-label" for="pkNote">Not (isteğe bağlı)</label>
+          <input type="text" id="pkNote" class="input" placeholder="Restoran, bahşiş…" maxlength="80">
+        </div>
+      </div>
+      <div class="sheet-actions">
+        <button type="button" class="btn btn-danger" id="pkDelete" hidden>Sil</button>
+        <button type="submit" class="btn btn-primary grow">Kaydet</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- ===================== ALT PENCERE (GİDER FORMU) ===================== -->
+  <div class="overlay" id="exSheet" hidden>
+    <form class="sheet" id="exForm" autocomplete="off">
+      <div class="sheet-head">
+        <h2 id="exTitle">Gider ekle</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Kapat">✕</button>
+      </div>
+      <label class="field-label">Kategori</label>
+      <div class="chips" id="exCats"></div>
+      <div class="inline-form" id="exNewCatRow" hidden>
+        <input type="text" id="exNewCat" class="input" placeholder="Yeni kategori adı" maxlength="30">
+        <button type="button" class="btn btn-secondary" id="exNewCatSave">Ekle</button>
+      </div>
+      <label class="field-label" for="exAmount">Tutar (₺)</label>
+      <input type="text" inputmode="decimal" id="exAmount" class="input input-amount" placeholder="0" enterkeyhint="done">
+      <div class="row-2">
+        <div>
+          <label class="field-label" for="exTime">Saat</label>
+          <input type="time" id="exTime" class="input">
+        </div>
+        <div class="grow">
+          <label class="field-label" for="exNote">Not (isteğe bağlı)</label>
+          <input type="text" id="exNote" class="input" placeholder="Açıklama" maxlength="80">
+        </div>
+      </div>
+      <div class="sheet-actions">
+        <button type="button" class="btn btn-danger" id="exDelete" hidden>Sil</button>
+        <button type="submit" class="btn btn-primary grow">Kaydet</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- ===================== ONAY PENCERESİ ===================== -->
+  <div class="overlay center" id="confirmBox" hidden>
+    <div class="dialog" role="alertdialog" aria-modal="true">
+      <p id="confirmMsg"></p>
+      <div class="sheet-actions">
+        <button class="btn btn-secondary grow" id="confirmNo">Vazgeç</button>
+        <button class="btn btn-danger grow" id="confirmYes">Evet</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Kısa bildirim (toast) — "Geri al" düğmesi içerebilir -->
+  <div class="toast" id="toast" hidden>
+    <span id="toastMsg"></span>
+    <button class="toast-btn" id="toastAction" hidden></button>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
